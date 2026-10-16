@@ -1,18 +1,13 @@
-FROM node:22-alpine AS build
-
+# Stage 1: Build React static assets
+FROM node:20-alpine AS builder
 WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci
-
 COPY . .
-RUN npm run build
+RUN npm install && npm run build
 
-# Stage 2: Serve the application with Nginx
+# Stage 2: Serve with Nginx (Non-root)
 FROM nginxinc/nginx-unprivileged:alpine
-
-COPY --from=build /app/build /usr/share/nginx/html
-
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/build /usr/share/nginx/html
 EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

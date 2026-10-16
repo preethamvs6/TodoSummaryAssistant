@@ -1,7 +1,14 @@
 
 .git
+.gitignore
 .env
 *.log
 .idea
 .vscode
+target/
+*.class
+Dockerfile*
+docker-compose*.yml
+README.md
+
 

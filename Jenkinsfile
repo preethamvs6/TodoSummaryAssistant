@@ -1,111 +1,59 @@
-
 pipeline {
     agent any
 
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-    }
-
     environment {
-        BACKEND_IMAGE  = 'YOUR_DOCKERHUB_USERNAME/todo-backend'
-        FRONTEND_IMAGE = 'YOUR_DOCKERHUB_USERNAME/todo-frontend'
-        DEPLOY_HOST    = '127.0.0.1'
+        DOCKER_USER = 'yourdockerhubuser'
+        EC2_HOST    = 'your-ec2-ip'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Test Backend') {
+        stage('1. Test') {
             steps {
                 dir('Backend/todo-summary-assistant') {
-                    sh 'chmod +x mvnw'
-                    sh './mvnw clean test'
+                    sh 'chmod +x mvnw && ./mvnw clean test'
                 }
             }
         }
 
-        stage('Build Docker Images') {
+        stage('2. Build') {
             steps {
-                sh '''
-                    docker build -t ${BACKEND_IMAGE}:${BUILD_NUMBER} \
-                        Backend/todo-summary-assistant
-                    docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} \
-                        Frontend/todo
-                '''
+                sh "docker build -t ${DOCKER_USER}/todo-backend:${BUILD_NUMBER} -t ${DOCKER_USER}/todo-backend:latest Backend/todo-summary-assistant"
+                sh "docker build -t ${DOCKER_USER}/todo-frontend:${BUILD_NUMBER} -t ${DOCKER_USER}/todo-frontend:latest Frontend/todo"
             }
         }
 
-        stage('Push Images') {
+        stage('3. Push') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login \
-                            -u "$DOCKER_USER" --password-stdin
-
-                        docker push ${BACKEND_IMAGE}:${BUILD_NUMBER}
-                        docker push ${FRONTEND_IMAGE}:${BUILD_NUMBER}
-
-                        docker logout
-                    '''
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'U', passwordVariable: 'P')]) {
+                    sh 'echo "$P" | docker login -u "$U" --password-stdin'
+                    sh "docker push ${DOCKER_USER}/todo-backend:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_USER}/todo-backend:latest"
+                    sh "docker push ${DOCKER_USER}/todo-frontend:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_USER}/todo-frontend:latest"
                 }
             }
         }
 
-        stage('Deploy on EC2') {
+        stage('4. Deploy') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'app-db-creds',
-                        usernameVariable: 'DB_USERNAME',
-                        passwordVariable: 'DB_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        docker pull ${BACKEND_IMAGE}:${BUILD_NUMBER}
-                        docker pull ${FRONTEND_IMAGE}:${BUILD_NUMBER}
-
-                        docker rm -f todo-backend-new 2>/dev/null || true
-
-                        docker run -d \
-                            --name todo-backend-new \
-                            --restart unless-stopped \
-                            -p 127.0.0.1:8080:8080 \
-                            -e DB_URL="$DB_URL" \
-                            -e DB_USERNAME="$DB_USERNAME" \
-                            -e DB_PASSWORD="$DB_PASSWORD" \
-                            ${BACKEND_IMAGE}:${BUILD_NUMBER}
-
-                        docker run --rm --network host \
-                            ${BACKEND_IMAGE}:${BUILD_NUMBER} \
-                            sh -c 'exit 0' || true
-
-                        curl --retry 12 --retry-delay 5 \
-                            --retry-connrefused \
-                            http://127.0.0.1:8080/
-                    '''
+                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY', usernameVariable: 'USER')]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -i \$KEY \${USER}@\${EC2_HOST} "
+                            docker pull ${DOCKER_USER}/todo-backend:${BUILD_NUMBER}
+                            docker pull ${DOCKER_USER}/todo-frontend:${BUILD_NUMBER}
+                            docker rm -f todo-backend todo-frontend || true
+                            docker run -d --name todo-backend -p 8080:8080 ${DOCKER_USER}/todo-backend:${BUILD_NUMBER}
+                            docker run -d --name todo-frontend -p 80:8080 ${DOCKER_USER}/todo-frontend:${BUILD_NUMBER}
+                        "
+                    """
                 }
             }
         }
-    }
 
-    post {
-        success {
-            echo 'CI/CD pipeline completed successfully.'
-        }
-        failure {
-            echo 'Pipeline failed. Review the stage logs before retrying.'
+        stage('5. Health Check') {
+            steps {
+                sh "curl --retry 5 --retry-delay 5 http://${EC2_HOST}:8080/actuator/health"
+            }
         }
     }
 }
-

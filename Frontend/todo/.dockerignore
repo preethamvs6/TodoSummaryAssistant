@@ -1,7 +1,14 @@
 node_modules
+build
 dist
 .git
+.gitignore
 .env
 .env.*
 npm-debug.log*
-EOF
+yarn-debug.log*
+yarn-error.log*
+Dockerfile*
+nginx.conf
+README.md
+
