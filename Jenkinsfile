@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_USER = 'yourdockerhubuser'
-        EC2_HOST    = 'your-ec2-ip'
+        DOCKER_USER = 'preethamvs6'
+        EC2_HOST    = '13.235.68.52'
     }
 
     stages {
