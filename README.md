@@ -119,3 +119,12 @@ The pipeline is defined in [`Jenkinsfile`](Jenkinsfile) with 5 stages:
 1. **Database Persistence**: MySQL is containerized only for local testing. In production, AWS RDS MySQL is used for high availability, security, and automated backups.
 2. **Networking**: The backend container and Nginx frontend share a Docker bridge network (`todo-network`) where Nginx reverse-proxies `/api/` requests to `http://backend:8080/api/`.
 3. **API Keys**: Cohere API and Slack Webhook integrations are optional for core CRUD testing; if keys are empty or dummy values, CRUD operations continue to function normally.
+
+---
+
+## 8. Operational & Failure Documentation
+
+Detailed assessments and disaster recovery strategies:
+* **[Failure and Rollback Scenarios](FAILURE_AND_ROLLBACK.md)**: Procedures for faulty deployments, crash recovery, CI/CD downtime, credential rotation, EC2 host recovery, and RDS failover.
+* **[Monitoring and Operations (Design Level)](MONITORING_AND_OPERATIONS.md)**: Four Golden Signals metrics, critical log analysis, alert noise reduction, and proactive incident detection.
+* **[AWS Cloud Architecture & Setup](aws/aws-setup.md)**: EC2 Docker host architecture, Security Group chaining (`sg-ec2` -> `sg-rds`), and IAM role configuration.

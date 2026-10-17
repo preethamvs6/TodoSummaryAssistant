@@ -14,7 +14,7 @@ This document outlines the operational procedures, failure handling, and disaste
    * SSH into the EC2 instance:
      ```bash
      ssh -i key.pem ubuntu@<EC2_IP>
-     docker pull yourdockerhubuser/todo-backend:<PREVIOUS_TAG>
+     docker pull preethamvs6/todo-backend:<PREVIOUS_TAG>
      docker rm -f todo-backend
      docker run -d --name todo-backend --restart unless-stopped --network todo-network -p 8080:8080 <PREVIOUS_IMAGE>
      ```
@@ -47,20 +47,20 @@ This document outlines the operational procedures, failure handling, and disaste
 **Yes.** Deployments can be performed manually using the local Docker engine and SSH:
 1. **Build and Tag Locally**:
    ```bash
-   docker build -t yourdockerhubuser/todo-backend:v1.0.1 Backend/todo-summary-assistant
-   docker build -t yourdockerhubuser/todo-frontend:v1.0.1 Frontend/todo
+   docker build -t preethamvs6/todo-backend:v1.0.1 Backend/todo-summary-assistant
+   docker build -t preethamvs6/todo-frontend:v1.0.1 Frontend/todo
    ```
 2. **Push to Docker Hub**:
    ```bash
-   docker push yourdockerhubuser/todo-backend:v1.0.1
-   docker push yourdockerhubuser/todo-frontend:v1.0.1
+   docker push preethamvs6/todo-backend:v1.0.1
+   docker push preethamvs6/todo-frontend:v1.0.1
    ```
 3. **Deploy directly on EC2 via SSH**:
    ```bash
    ssh -i key.pem ubuntu@<EC2_IP>
-   docker pull yourdockerhubuser/todo-backend:v1.0.1
+   docker pull preethamvs6/todo-backend:v1.0.1
    docker rm -f todo-backend
-   docker run -d --name todo-backend --restart unless-stopped --network todo-network -p 8080:8080 yourdockerhubuser/todo-backend:v1.0.1
+   docker run -d --name todo-backend --restart unless-stopped --network todo-network -p 8080:8080 preethamvs6/todo-backend:v1.0.1
    ```
 4. Verify by running `curl http://localhost:8080/actuator/health`.
 

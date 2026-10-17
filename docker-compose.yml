@@ -1,48 +1,163 @@
-version: '3.8'
 
 services:
-  # MySQL Database
+  # ----------------------------------------------------------------------------
+  # 1. MySQL Database Service
+  # ----------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
-    restart: always
+    container_name: mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: todo_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-RootSecurePassword123!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-todo_db}
+      MYSQL_USER: ${MYSQL_USER:-todo_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SecurePassword123!}
     ports:
       - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-RootSecurePassword123!}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - todo-network
 
-  # Spring Boot Backend
+  # ----------------------------------------------------------------------------
+  # 2. Spring Boot REST Backend Service
+  # ----------------------------------------------------------------------------
   backend:
-    build: ./Backend/todo-summary-assistant
-    restart: always
-    depends_on:
-      - mysql
+    build:
+      context: ./Backend/todo-summary-assistant
+      dockerfile: Dockerfile
+    container_name: backend
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
     environment:
-      DB_URL: jdbc:mysql://mysql:3306/todo_db?createDatabaseIfNotExist=true&useSSL=false
-      DB_USERNAME: root
-      DB_PASSWORD: root
-
-  # React Frontend
-  frontend:
-    build: ./Frontend/todo
-    restart: always
+      PORT: 8080
+      DB_URL: ${DB_URL:-jdbc:mysql://mysql:3306/todo_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+      DB_USERNAME: ${DB_USERNAME:-todo_user}
+      DB_PASSWORD: ${DB_PASSWORD:-SecurePassword123!}
+      DB_MAX_POOL_SIZE: ${DB_MAX_POOL_SIZE:-10}
+      DB_MIN_IDLE: ${DB_MIN_IDLE:-2}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     depends_on:
-      - backend
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - todo-network
+
+  # ----------------------------------------------------------------------------
+  # 3. React Frontend Service (Nginx Reverse Proxy)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./Frontend/todo
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
     ports:
       - "3000:8080"
+    environment:
+      REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-/api/todos}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - todo-network
 
-  # Prometheus
+  # ----------------------------------------------------------------------------
+  # 4. Host Node Exporter (System Metrics)
+  # ----------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    networks:
+      - todo-network
+
+  # ----------------------------------------------------------------------------
+  # 5. Prometheus Observability Service
+  # ----------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+      node-exporter:
+        condition: service_started
+    networks:
+      - todo-network
 
-  # Grafana
+  # ----------------------------------------------------------------------------
+  # 6. Grafana Visualization & Dashboard Service
+  # ----------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/grafana-dashboard.json:ro
+    depends_on:
+      - prometheus
+    networks:
+      - todo-network
+
+# ------------------------------------------------------------------------------
+# Networks
+# ------------------------------------------------------------------------------
+networks:
+  todo-network:
+    name: todo-network
+    driver: bridge
+
+# ------------------------------------------------------------------------------
+# Persistent Storage Volumes
+# ------------------------------------------------------------------------------
+volumes:
+  mysql_data:
+    name: todo_mysql_data
+  prometheus_data:
+    name: todo_prometheus_data
+  grafana_data:
+    name: todo_grafana_data
