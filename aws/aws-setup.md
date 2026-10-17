@@ -9,37 +9,35 @@ This document explains the production cloud architecture for hosting the **Todo 
 ![AWS Architecture Diagram](architecture-diagram.png)
 
 ```
-[ Internet Users / Admins ]
-        │
-        │ HTTP (80), HTTPS (443), SSH (22)
-        ▼
- ┌─────────────────────────────────────────────────────────────┐
- │ AWS EC2 Instance (Docker Host) - T3.medium / T3.micro       │
- │ Security Group: sg-ec2                                      │
- │                                                             │
- │  ┌───────────────────────────────────────────────────────┐  │
- │  │ Docker Runtime Engine                                 │  │
- │  │                                                       │  │
- │  │  ├── React Frontend         (Port 80 / 3000)          │  │
- │  │  ├── Spring Boot Backend    (Port 8080)               │──┼───────┐
- │  │  ├── Prometheus             (Port 9090)               │  │       │
- │  │  └── Grafana                (Port 3001)               │  │       │
- │  └───────────────────────────────────────────────────────┘  │       │
- │                                                             │       │
- │  Attached IAM Role: TodoApp-EC2-Role                        │       │
- │  (SSM Management + CloudWatch Logging, No AWS Keys)         │       │
- └─────────────────────────────────────────────────────────────┘       │
-                                                                       │ Port 3306
-                                                                       │ (Strictly sg-ec2)
-                                                                       ▼
-                                ┌──────────────────────────────────────────────┐
-                                │ AWS RDS MySQL Instance                       │
-                                │ Security Group: sg-rds                       │
-                                │                                              │
-                                │  • Inbound Port 3306 strictly from sg-ec2    │
-                                │  • Publicly Accessible: NO                   │
-                                │  • Automated Daily Snapshots & Multi-AZ      │
-                                └──────────────────────────────────────────────┘
+ [ Developer / Git Push ] ──► [ GitHub ] ──► [ Jenkins CI/CD Pipeline ] ──► [ Docker Hub ]
+                                                        │
+                                                        │ Deploy via SSH
+                                                        ▼
+[ Internet Users ] ───────────────────► ┌──────────────────────────────────────────────┐
+  HTTP (80) / HTTPS (443)               │ AWS EC2 Instance (Docker Host)               │
+                                        │ Tag: Security Group: sg-ec2                  │
+                                        │                                              │
+                                        │  ┌────────────────────────────────────────┐  │
+                                        │  │ React Frontend        (Port 80/3000)   │  │
+                                        │  │                                        │  │
+                                        │  │ Spring Boot Backend   (Port 8080)      ├──┼───────┐
+                                        │  │                                        │  │       │
+                                        │  │ Prometheus            (Port 9090)      │  │       │
+                                        │  │                                        │  │       │
+                                        │  │ Grafana               (Port 3001)      │  │       │
+                                        │  └────────────────────────────────────────┘  │       │
+                                        └──────────────────────────────────────────────┘       │
+                                                                                               │ Port 3306
+                                                                                               │ (Strictly sg-ec2)
+                                                                                               ▼
+                                                 ┌─────────────────────────────────────────────┐
+                                                 │ AWS RDS for MySQL (Multi-AZ)                │
+                                                 │ Tag: Security Group: sg-rds                 │
+                                                 │                                             │
+                                                 │  • Inbound Port 3306 strictly from sg-ec2   │
+                                                 │  • Publicly Accessible: NO                  │
+                                                 │  • Automated Daily Snapshots                │
+                                                 └─────────────────────────────────────────────┘
 ```
 
 ---
